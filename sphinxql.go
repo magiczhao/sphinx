@@ -124,19 +124,6 @@ func (sc *Client) ExecuteReturnRowsAffected(sqlStr string) (rowsAffected int, er
 	return
 }
 
-func mvaStrValue(mvaValue reflect.Value) (string, error) {
-	fields := make([]string, 0, mvaValue.Len())
-	for i := 0; i < mvaValue.Len(); i++ {
-		value := mvaValue.Index(i)
-		strValue, err := GetValQuoteStr(value)
-		if err != nil {
-			return "", err
-		}
-		fields = append(fields, strValue)
-	}
-	return "(" + strings.Join(fields, ",") + ")", nil
-}
-
 // Sphinx doesn't support LastInsertId now.
 func (sc *Client) insert(obj interface{}, doReplace bool) (err error) {
 	if err = sc.Init(obj); err != nil {
@@ -158,13 +145,6 @@ func (sc *Client) insert(obj interface{}, doReplace bool) (err error) {
 						if err = appendField(strs, vals, fieldVal); err != nil {
 							return err
 						}
-					case reflect.Slice:
-						strValue, err := mvaStrValue(fieldVal)
-						if err != nil {
-							return err
-						}
-						*strs = append(*strs, sf.Name)
-						*vals = append(*vals, strValue)
 					case reflect.Map:
 						// just pass
 					default:
@@ -176,10 +156,8 @@ func (sc *Client) insert(obj interface{}, doReplace bool) (err error) {
 						*vals = append(*vals, s)
 					}
 				}
-
 				return nil
 			}
-
 			if err = appendField(&sc.Columns, &colVals, sc.val); err != nil {
 				return
 			}
@@ -384,6 +362,21 @@ func GetColVals(val reflect.Value, cols []string) (values []string, err error) {
 	return
 }
 
+func joinIntArray(value reflect.Value) (string, error) {
+	if value.Kind() != reflect.Slice {
+		return "", fmt.Errorf("value type=%d is not slice", value.Kind())
+	}
+	strValues := make([]string, 0, value.Len())
+	for i := 0; i < value.Len(); i++ {
+		strValue, err := GetValQuoteStr(value.Index(i))
+		if err != nil {
+			return "", err
+		}
+		strValues = append(strValues, strValue)
+	}
+	return strings.Join(strValues, ","), nil
+}
+
 // for insert and update
 // If already assigned, then just ignore tag
 func GetValQuoteStr(val reflect.Value) (string, error) {
@@ -403,10 +396,17 @@ func GetValQuoteStr(val reflect.Value) (string, error) {
 	case reflect.String:
 		return QuoteStr(val.String()), nil
 	case reflect.Slice: //[]byte
-		if val.Type().Elem().Name() != "uint8" {
+		if val.Type().Elem().Name() == "uint8" {
+			return QuoteStr(string(val.Interface().([]byte))), nil
+		} else if val.Type().Elem().Name() == "int" {
+			strValue, err := joinIntArray(val)
+			if err != nil {
+				return "", err
+			}
+			return "(" + strValue + ")", nil
+		} else {
 			return "", fmt.Errorf("GetValQuoteStr> slicetype is not []byte: %v", val.Interface())
 		}
-		return QuoteStr(string(val.Interface().([]byte))), nil
 	default:
 		return "", fmt.Errorf("GetValQuoteStr> reflect.Value is not a string/int/uint/float/bool/[]byte!\nval: %v", val)
 	}
