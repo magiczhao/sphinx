@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
 	"io"
 	"reflect"
 	"strconv"
 	"strings"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -58,9 +59,9 @@ func (sc *Client) GetDb() (err error) {
 	if sc.DB, err = sql.Open("mysql", addr+"/"); err != nil {
 		return err
 	}
-	
+
 	// FIXME
-	// The returned DB is safe for concurrent use by multiple goroutines and maintains its own pool of idle connections. 
+	// The returned DB is safe for concurrent use by multiple goroutines and maintains its own pool of idle connections.
 	//sc.DB.SetMaxOpenConns(100)
 	sc.DB.SetMaxIdleConns(10)
 
@@ -97,7 +98,7 @@ func (sc *Client) Execute(sqlStr string) (result sql.Result, err error) {
 		}
 	}
 	// It is rare to Close a DB, as the DB handle is meant to be
-        // long-lived and shared between many goroutines.
+	// long-lived and shared between many goroutines.
 	//defer sc.DB.Close()
 	return sc.DB.Exec(sqlStr)
 }
@@ -123,6 +124,19 @@ func (sc *Client) ExecuteReturnRowsAffected(sqlStr string) (rowsAffected int, er
 	return
 }
 
+func mvaStrValue(mvaValue reflect.Value) (string, error) {
+	fields := make([]string, 0, mvaValue.Len())
+	for i := 0; i < mvaValue.Len(); i++ {
+		value := mvaValue.Index(i)
+		strValue, err := GetValQuoteStr(value)
+		if err != nil {
+			return "", err
+		}
+		fields = append(fields, strValue)
+	}
+	return "(" + strings.Join(fields, ",") + ")", nil
+}
+
 // Sphinx doesn't support LastInsertId now.
 func (sc *Client) insert(obj interface{}, doReplace bool) (err error) {
 	if err = sc.Init(obj); err != nil {
@@ -144,7 +158,14 @@ func (sc *Client) insert(obj interface{}, doReplace bool) (err error) {
 						if err = appendField(strs, vals, fieldVal); err != nil {
 							return err
 						}
-					case reflect.Slice, reflect.Map:
+					case reflect.Slice:
+						strValue, err := mvaStrValue(fieldVal)
+						if err != nil {
+							return err
+						}
+						*strs = append(*strs, sf.Name)
+						*vals = append(*vals, strValue)
+					case reflect.Map:
 						// just pass
 					default:
 						*strs = append(*strs, sf.Name)
