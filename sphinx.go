@@ -207,7 +207,6 @@ type Client struct {
 	indexWeights map[string]int
 	fieldWeights map[string]int
 	overrides    map[string]override
-	oldaddr      string
 
 	// For sphinxql
 	DB  *sql.DB       // Capitalize, so that can "defer sc.Db.Close()"
@@ -1198,11 +1197,6 @@ func (sc *Client) FlushAttributes() (iFlushTag int, err error) {
 	return
 }
 
-func (sc *Client) IsAddrChanges() bool {
-	addr := fmt.Sprintf("%s:%d", sc.Host, sc.Port)
-	return addr != sc.oldaddr
-}
-
 func (sc *Client) connect() (err error) {
 	if sc.conn != nil {
 		return
@@ -1219,14 +1213,12 @@ func (sc *Client) connect() (err error) {
 			sc.connerror = true
 			return fmt.Errorf("connect() net.DialTimeout(%d ms) > %v", sc.Timeout, err)
 		}
-		sc.oldaddr = sc.Socket
 	} else if sc.Port > 0 {
 		addr := fmt.Sprintf("%s:%d", sc.Host, sc.Port)
 		if sc.conn, err = net.DialTimeout("tcp", addr, timeout); err != nil {
 			sc.connerror = true
 			return fmt.Errorf("connect() net.DialTimeout(%d ms) > %v", sc.Timeout, err)
 		}
-		sc.oldaddr = addr
 	} else {
 		return fmt.Errorf("connect() > No valid socket or port!\n%Client: #v", sc)
 	}
