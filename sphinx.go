@@ -207,6 +207,7 @@ type Client struct {
 	indexWeights map[string]int
 	fieldWeights map[string]int
 	overrides    map[string]override
+	oldaddr      string
 
 	// For sphinxql
 	DB  *sql.DB       // Capitalize, so that can "defer sc.Db.Close()"
@@ -1197,6 +1198,11 @@ func (sc *Client) FlushAttributes() (iFlushTag int, err error) {
 	return
 }
 
+func (sc *Client) IsAddrChanges() bool {
+	addr := fmt.Sprintf("%s:%d", sc.Host, sc.Port)
+	return addr != sc.oldaddr
+}
+
 func (sc *Client) connect() (err error) {
 	if sc.conn != nil {
 		return
@@ -1213,11 +1219,14 @@ func (sc *Client) connect() (err error) {
 			sc.connerror = true
 			return fmt.Errorf("connect() net.DialTimeout(%d ms) > %v", sc.Timeout, err)
 		}
+		sc.oldaddr = sc.Socket
 	} else if sc.Port > 0 {
-		if sc.conn, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", sc.Host, sc.Port), timeout); err != nil {
+		addr := fmt.Sprintf("%s:%d", sc.Host, sc.Port)
+		if sc.conn, err = net.DialTimeout("tcp", addr, timeout); err != nil {
 			sc.connerror = true
 			return fmt.Errorf("connect() net.DialTimeout(%d ms) > %v", sc.Timeout, err)
 		}
+		sc.oldaddr = addr
 	} else {
 		return fmt.Errorf("connect() > No valid socket or port!\n%Client: #v", sc)
 	}
@@ -1333,7 +1342,7 @@ func (sc *Client) doRequest(command int, version int, req []byte) (res []byte, e
 		// do nothing
 	case SEARCHD_WARNING:
 		wlen := binary.BigEndian.Uint32(res[0:4])
-		sc.warning = string(res[4:4+wlen])
+		sc.warning = string(res[4 : 4+wlen])
 		res = res[4+wlen:]
 	case SEARCHD_ERROR, SEARCHD_RETRY:
 		wlen := binary.BigEndian.Uint32(res[0:4])
@@ -1383,10 +1392,9 @@ func DegreeToRadian(degree float32) float32 {
 	return degree * math.Pi / 180
 }
 
-
 type byteParser struct {
 	stream []byte
-	p int
+	p      int
 }
 
 func (bp *byteParser) Int32() (i int) {
@@ -1408,7 +1416,7 @@ func (bp *byteParser) Uint64() (i uint64) {
 }
 
 func (bp *byteParser) Float32() (f float32, err error) {
-	buf := bytes.NewBuffer(bp.stream[bp.p : bp.p + 4])
+	buf := bytes.NewBuffer(bp.stream[bp.p : bp.p+4])
 	bp.p += 4
 	if err := binary.Read(buf, binary.BigEndian, &f); err != nil {
 		return 0, err
