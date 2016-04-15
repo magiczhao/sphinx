@@ -183,7 +183,6 @@ func (sc *Client) insert(obj interface{}, doReplace bool) (err error) {
 	}
 	sqlStr += fmt.Sprintf(" INTO %s (%s) VALUES (%s)", sc.Index, strings.Join(sc.Columns, ","), strings.Join(colVals, ","))
 
-	//fmt.Printf("Insert sql: %s\n", sqlStr)
 	if _, err = sc.Execute(sqlStr); err != nil {
 		return fmt.Errorf("Insert > %v", err)
 	}
